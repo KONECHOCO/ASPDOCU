@@ -5,6 +5,7 @@ const { layoutAll } = require('./layout');
 const { evalFormula, formatValue } = require('./format');
 const { renderPdf } = require('./render');
 const { createApp } = require('./index');
+const { pingJdbc } = require('./jdbc');
 const store = require('./store');
 
 let failed = 0;
@@ -138,7 +139,10 @@ async function main() {
 
   const status = await request(app, 'GET', '/api/v1/as400/status');
   const statusBody = JSON.parse(status.text);
-  assert(status.status === 200 && statusBody.drivers && typeof statusBody.drivers.package === 'boolean', 'stato driver ODBC letto');
+  assert(status.status === 200 && statusBody.drivers && statusBody.drivers.java === true && statusBody.drivers.ready === true, 'collegamento diretto pronto, senza ODBC');
+
+  const ping = await pingJdbc();
+  assert(ping.pong === true, 'ponte Java IBM Toolbox risponde');
 
   console.log('\n' + passed + ' ok, ' + failed + ' falliti');
   if (failed) process.exit(1);

@@ -47,7 +47,7 @@
           </article>
           <article class="as400-card">
             <h2>AS/400</h2>
-            <p>${drivers.ready ? 'Il driver ODBC IBM i è installato su questo PC.' : 'Il driver ODBC non risulta pronto. Puoi comunque disegnare, provare lo spool di esempio e farti chiamare dai programmi.'}</p>
+            <p>${drivers.ready ? 'Il collegamento all\'IBM i è diretto: Java, senza driver ODBC.' : 'Java non risulta installato. Il collegamento diretto non usa ODBC: serve Java 8 o successivo. Puoi comunque disegnare e provare lo spool di esempio.'}</p>
             <p>${(window.Asp.systems || []).map((system) => esc(system.name)).join(' · ')}</p>
             <button type="button" id="home-as400-2">Configura la connessione</button>
           </article>

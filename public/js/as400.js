@@ -50,15 +50,15 @@
         <h1>Connessione all'AS/400</h1>
         <p>ASPDOCU legge il DB2 e gli spool. I programmi sull'AS/400, e gli altri software, lo richiamano per ottenere il PDF del report scelto.</p>
         <ol class="steps">
-          <li class="on">Sistema e driver</li>
+          <li class="on">Sistema</li>
           <li>Prova connessione</li>
           <li>SQL o spool</li>
           <li>Chiamata di stampa</li>
         </ol>
         <div class="driver-box ${drivers.ready ? 'ok' : 'wait'}">
-          <strong>${drivers.ready ? 'Driver ODBC pronto' : 'Driver ODBC non pronto'}</strong>
-          <span>Pacchetto Node odbc: ${drivers.package ? 'installato' : 'assente'}. Driver IBM i: ${esc(driverNames)}.</span>
+          <strong>${drivers.ready ? 'Collegamento diretto pronto' : 'Java non trovato'}</strong>
           <span>${esc(drivers.hint || '')}</span>
+          <span>ODBC: ${drivers.package && driverNames !== 'nessuno' ? esc(driverNames) : 'non richiesto'}.</span>
         </div>
       </section>
       <div class="as-layout">
@@ -76,7 +76,7 @@
     list.innerHTML = `<h2>Sistemi</h2>` + window.Asp.systems.map((system) => `
       <button type="button" class="system ${system.id === selectedId ? 'on' : ''}" data-system="${esc(system.id)}">
         <strong>${esc(system.name)}</strong>
-        <span>${system.type === 'demo' ? 'Dimostrazione' : system.type === 'ponte' ? 'Ponte HTTP' : 'ODBC'} · ${esc(system.host || 'senza host')}</span>
+        <span>${system.type === 'demo' ? 'Dimostrazione' : system.type === 'ponte' ? 'Ponte HTTP' : system.type === 'odbc' ? 'ODBC' : 'Diretto, senza ODBC'} · ${esc(system.host || 'senza host')}</span>
       </button>`).join('') + `<button type="button" id="new-system" class="ghost">Nuovo sistema IBM i</button>`;
     list.querySelectorAll('[data-system]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -90,7 +90,7 @@
       const data = await window.AspApi.send('POST', '/api/v1/as400/systems', {
         id,
         name: 'IBM i di produzione',
-        type: 'odbc',
+        type: 'jdbc',
         host: '',
         port: 8471,
         user: '',
@@ -108,22 +108,25 @@
   }
 
   function paintForm() {
-    const system = current() || { id: '', name: '', type: 'odbc', host: '', port: 8471, user: '', library: '', naming: 'sql', ccsid: 280, driver: 'IBM i Access ODBC Driver', bridgeUrl: '' };
+    const system = current() || { id: '', name: '', type: 'jdbc', host: '', port: 8471, user: '', library: '', naming: 'sql', ccsid: 280, driver: 'IBM i Access ODBC Driver', bridgeUrl: '' };
     const form = document.getElementById('system-form');
     const locked = system.type === 'demo';
+    const shownType = system.type === 'odbc' ? 'jdbc' : (system.type || 'jdbc');
+    const badge = locked ? 'Dimostrazione' : shownType === 'ponte' ? 'Ponte' : shownType === 'odbc' ? 'ODBC' : 'Senza ODBC';
     form.innerHTML = `
       <div class="form-head">
         <h2>${esc(system.name || 'Sistema')}</h2>
-        <span class="badge ${locked ? 'demo' : 'live'}">${locked ? 'Dimostrazione' : system.type === 'ponte' ? 'Ponte' : 'Connessione reale'}</span>
+        <span class="badge ${locked || shownType === 'odbc' ? 'demo' : 'live'}">${badge}</span>
       </div>
-      <p class="muted">${locked ? 'Questo sistema non parla con una macchina vera: serve a provare SQL e spool. Crea un sistema ODBC per il tuo IBM i.' : 'La porta abituale del database è 8471. Il driver è quello di IBM i Access Client Solutions, Application Package.'}</p>
+      <p class="muted" id="sy-hint"></p>
       <div class="form-grid">
         <label>Nome<input id="sy-name" value="${esc(system.name || '')}" ${locked ? 'disabled' : ''}></label>
         <label>Tipo<select id="sy-type" ${locked ? 'disabled' : ''}>
+          <option value="jdbc">Diretto, senza ODBC</option>
           <option value="odbc">ODBC IBM i Access</option>
           <option value="ponte">Ponte HTTP</option>
         </select></label>
-        <label>Host o indirizzo IP<input id="sy-host" value="${esc(system.host || '')}" placeholder="192.168.0.20" ${locked ? 'disabled' : ''}></label>
+        <label>Host o indirizzo IP<input id="sy-host" value="${esc(system.host || '')}" placeholder="pub400.com" ${locked ? 'disabled' : ''}></label>
         <label>Porta database<input id="sy-port" type="number" value="${system.port || 8471}" ${locked ? 'disabled' : ''}></label>
         <label>Utente<input id="sy-user" value="${esc(system.user || '')}" ${locked ? 'disabled' : ''}></label>
         <label>Password<input id="sy-pass" type="password" placeholder="${system.hasPassword ? 'già salvata' : ''}" ${locked ? 'disabled' : ''}></label>
@@ -133,8 +136,8 @@
           <option value="sql">SQL (LIBRERIA.TABELLA)</option>
           <option value="system">Sistema (LIBRERIA/TABELLA)</option>
         </select></label>
-        <label class="wide">Driver ODBC<input id="sy-driver" value="${esc(system.driver || 'IBM i Access ODBC Driver')}" ${locked ? 'disabled' : ''}></label>
-        <label class="wide">URL ponte, solo se il tipo è Ponte<input id="sy-bridge" value="${esc(system.bridgeUrl || '')}" placeholder="http://192.168.0.5:8090/sql" ${locked ? 'disabled' : ''}></label>
+        <label class="wide" id="sy-driver-wrap">Driver ODBC<input id="sy-driver" value="${esc(system.driver || 'IBM i Access ODBC Driver')}" ${locked ? 'disabled' : ''}></label>
+        <label class="wide" id="sy-bridge-wrap">URL ponte<input id="sy-bridge" value="${esc(system.bridgeUrl || '')}" placeholder="http://192.168.0.5:8090/sql" ${locked ? 'disabled' : ''}></label>
       </div>
       <pre class="cs" id="cs-preview"></pre>
       <div class="row-buttons">
@@ -144,11 +147,14 @@
       </div>
       <p id="sy-result" class="result"></p>`;
     const type = document.getElementById('sy-type');
-    if (type && system.type !== 'demo') type.value = system.type || 'odbc';
+    if (type && system.type !== 'demo') type.value = shownType;
     const naming = document.getElementById('sy-naming');
     if (naming) naming.value = system.naming || 'sql';
     previewCs();
-    form.querySelectorAll('input, select').forEach((node) => node.addEventListener('input', previewCs));
+    form.querySelectorAll('input, select').forEach((node) => {
+      node.addEventListener('input', previewCs);
+      node.addEventListener('change', previewCs);
+    });
     document.getElementById('sy-test').addEventListener('click', testConnection);
     document.getElementById('sy-save').addEventListener('click', saveSystem);
     const drop = document.getElementById('sy-drop');
@@ -161,7 +167,7 @@
     return {
       id: system.id,
       name: value('sy-name'),
-      type: value('sy-type') || 'odbc',
+      type: value('sy-type') || 'jdbc',
       host: value('sy-host'),
       port: Number(value('sy-port')) || 8471,
       user: value('sy-user'),
@@ -183,13 +189,28 @@
     const node = document.getElementById('cs-preview');
     const system = current();
     if (!node) return;
+    const payload = !system || system.type === 'demo' ? { type: 'demo' } : formPayload();
+    const driverWrap = document.getElementById('sy-driver-wrap');
+    const bridgeWrap = document.getElementById('sy-bridge-wrap');
+    const hint = document.getElementById('sy-hint');
+    if (driverWrap) driverWrap.hidden = payload.type !== 'odbc';
+    if (bridgeWrap) bridgeWrap.hidden = payload.type !== 'ponte';
+    if (hint) {
+      if (payload.type === 'demo') hint.textContent = 'Questo sistema non parla con una macchina vera: serve a provare SQL e spool. Per il tuo IBM i crea un sistema di tipo Diretto, senza ODBC.';
+      else if (payload.type === 'odbc') hint.textContent = 'ODBC chiede il driver IBM i Access su questo PC. Per lo stesso host e lo stesso utente, il tipo Diretto non lo usa.';
+      else if (payload.type === 'ponte') hint.textContent = 'Un servizio HTTP già in rete esegue il SQL e restituisce le righe.';
+      else hint.textContent = 'Host, utente e password dell\'IBM i. Java usa le porte standard del sistema, database 8471. Nessun driver ODBC.';
+    }
     if (!system || system.type === 'demo') {
-      node.textContent = 'Nessuna stringa ODBC: il sistema di esempio risponde in locale.';
+      node.textContent = 'Nessun collegamento esterno: il sistema di esempio risponde in locale.';
       return;
     }
-    const payload = formPayload();
     if (payload.type === 'ponte') {
       node.textContent = 'POST ' + (payload.bridgeUrl || '(url ponte)') + '\n{ "sql": "...", "params": [] }';
+      return;
+    }
+    if (payload.type === 'jdbc') {
+      node.textContent = `jdbc:as400://${payload.host}\nnaming=${payload.naming}; libraries=${payload.library || '(nessuna)'}; prompt=false\nporte standard del sistema · senza ODBC`;
       return;
     }
     node.textContent = `Driver={${payload.driver}};System=${payload.host};Uid=${payload.user};Pwd=***;Port=${payload.port};DefaultLibraries=${payload.library};CCSID=${payload.ccsid};Naming=${payload.naming === 'system' ? '1' : '0'};`;

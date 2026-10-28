@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { extractSpool, decodeSpoolBuffer } = require('./spool');
-const { demoSystem, fatturaReport } = require('./samples');
+const { fatturaReport } = require('./samples');
+const jdbc = require('./jdbc');
 
 const DATA = path.join(__dirname, '..', 'data');
 const SYSTEMS = path.join(DATA, 'systems.json');
@@ -53,7 +54,7 @@ function saveSystem(input, previous) {
   const next = {
     id,
     name: String(input.name || id).slice(0, 80),
-    type: ['demo', 'odbc', 'ponte'].includes(input.type) ? input.type : 'odbc',
+    type: ['demo', 'jdbc', 'odbc', 'ponte'].includes(input.type) ? input.type : 'jdbc',
     host: String(input.host || '').trim(),
     port: Number(input.port) || 8471,
     user: String(input.user || '').trim(),
@@ -91,8 +92,8 @@ function assertConnectionSafe(system) {
       throw error;
     }
   }
-  if (/[;]/.test(system.password || '')) {
-    const error = new Error('La password non può contenere ; nella stringa ODBC.');
+  if (system.type === 'odbc' && /[;]/.test(system.password || '')) {
+    const error = new Error('Con ODBC la password non può contenere ;. Il collegamento diretto, senza ODBC, non ha questo limite.');
     error.status = 400;
     throw error;
   }
@@ -155,17 +156,19 @@ function listInstalledDrivers() {
 }
 
 async function driverStatus() {
+  const java = await jdbc.javaAvailable();
   const odbc = loadOdbc();
   const installed = await listInstalledDrivers();
   const ibm = installed.filter((name) => /IBM|iSeries|Client Access|AS\/400/i.test(name));
   return {
+    java,
     package: Boolean(odbc),
     drivers: ibm,
     allDrivers: installed,
-    ready: Boolean(odbc) && ibm.length > 0,
-    hint: !odbc
-      ? 'Sul PC di ASPDOCU manca il pacchetto Node odbc. Dopo IBM i Access esegui: npm install odbc'
-      : (ibm.length ? 'Driver IBM i trovato.' : 'Nessun driver ODBC IBM i. Installa IBM i Access Client Solutions — Windows Application Package.')
+    ready: java,
+    hint: java
+      ? 'Collegamento diretto pronto: Java parla con l\'IBM i, senza driver ODBC.'
+      : 'Installa Java 8 o successivo. Il collegamento diretto non usa ODBC.'
   };
 }
 
@@ -175,7 +178,7 @@ function flattenSample(sample, params) {
   const rows = (sample.rows || []).map((row) => Object.assign({}, header, row));
   return {
     demo: true,
-    message: 'Sistema dimostrativo: queste righe sono locali. Un sistema ODBC esegue il SQL sul DB2 for i.',
+    message: 'Sistema dimostrativo: queste righe sono locali. Un sistema diretto esegue il SQL sul DB2 for i, senza ODBC.',
     columns: rows[0] ? Object.keys(rows[0]) : [],
     rows,
     header,
@@ -197,7 +200,7 @@ function normalizeRow(record) {
 async function queryOdbc(system, sql, params) {
   const odbc = loadOdbc();
   if (!odbc) {
-    const error = new Error('Pacchetto odbc non installato. Installa IBM i Access ODBC Driver e poi npm install odbc');
+    const error = new Error('ODBC non installato. Nel tipo di connessione scegli «Diretto, senza ODBC»: usa Java e non chiede il driver.');
     error.status = 503;
     throw error;
   }
@@ -262,18 +265,23 @@ async function testSystem(system) {
       demo: true,
       server: 'DEMO',
       user: 'DEMO',
-      message: 'Collegamento di esempio attivo. Librerie finte: VENDITE, ANAGRAFICHE. Per il sistema vero crea una connessione ODBC.'
+      message: 'Collegamento di esempio attivo. Librerie finte: VENDITE, ANAGRAFICHE. Per il sistema vero scegli il tipo Diretto, senza ODBC.'
     };
   }
+  const probe = 'SELECT CURRENT_SERVER AS SERVER, CURRENT_USER AS UTENTE FROM SYSIBM.SYSDUMMY1';
   if (system.type === 'ponte') {
-    const result = await queryBridge(system, 'SELECT CURRENT_SERVER AS SERVER, CURRENT_USER AS UTENTE FROM SYSIBM.SYSDUMMY1', []);
+    const result = await queryBridge(system, probe, []);
     return { ok: true, demo: false, message: result.message, row: result.rows[0] || null };
   }
-  const result = await queryOdbc(system, 'SELECT CURRENT_SERVER AS SERVER, CURRENT_USER AS UTENTE FROM SYSIBM.SYSDUMMY1', []);
+  if (system.type === 'odbc') {
+    const result = await queryOdbc(system, probe, []);
+    return { ok: true, demo: false, message: 'Connesso a IBM i tramite ODBC.', row: result.rows[0] || null };
+  }
+  const result = await jdbc.queryJdbc(system, probe, []);
   return {
     ok: true,
     demo: false,
-    message: 'Connesso a IBM i.',
+    message: 'Connesso a IBM i senza ODBC.',
     row: result.rows[0] || null
   };
 }
@@ -286,7 +294,8 @@ async function runQuery(system, sql, params) {
   }
   if (system.type === 'demo') return flattenSample(fatturaReport().sample, params);
   if (system.type === 'ponte') return queryBridge(system, sql, params);
-  return queryOdbc(system, sql, params);
+  if (system.type === 'odbc') return queryOdbc(system, sql, params);
+  return jdbc.queryJdbc(system, sql, params);
 }
 
 function spoolFromBody(body) {

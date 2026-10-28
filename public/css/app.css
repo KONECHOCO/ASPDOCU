@@ -119,6 +119,7 @@ li { margin: 6px 0; }
 .tool { background: var(--white); color: var(--ink); border: 1px solid var(--line); text-align: left; }
 .tool.on { background: #fff1ea; border-color: var(--accent); }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); margin: 8px 0; }
+label[hidden] { display: none; }
 input, select, textarea {
   background: var(--white);
   border: 1px solid var(--line);

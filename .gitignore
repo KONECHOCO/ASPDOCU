@@ -1,5 +1,7 @@
 node_modules/
 output/
+tools/*.jar
+tools/*.class
 data/settings.json
 data/systems.json
 *.log

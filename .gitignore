@@ -1,0 +1,5 @@
+node_modules/
+output/
+data/settings.json
+data/systems.json
+*.log

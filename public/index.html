@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASPDOCU — Stampe PDF</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">ASPDOCU <small>Stampe</small></div>
+    <nav class="nav">
+      <button type="button" data-view="home">Inizio</button>
+      <button type="button" data-view="design">Disegno</button>
+      <button type="button" data-view="as400" class="nav-as400">AS/400</button>
+      <button type="button" data-view="api">Programmi</button>
+    </nav>
+    <div class="top-actions">
+      <span id="save-state"></span>
+      <button type="button" id="btn-preview-spool" class="ghost">Anteprima spool</button>
+      <button type="button" id="btn-preview">Anteprima PDF</button>
+      <button type="button" id="btn-save">Salva</button>
+    </div>
+  </header>
+  <main id="view-home"></main>
+  <main id="view-design" hidden>
+    <aside id="tool-rail"></aside>
+    <section class="stage">
+      <div id="stage-bar" class="stage-bar"></div>
+      <div id="desk" class="desk"></div>
+    </section>
+    <aside id="inspector"></aside>
+  </main>
+  <main id="view-as400" hidden><div id="as400-root"></div></main>
+  <main id="view-api" hidden></main>
+  <div id="preview" hidden></div>
+  <div id="modal" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+  <script src="/js/format.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/designer.js"></script>
+  <script src="/js/as400.js"></script>
+  <script src="/js/main.js"></script>
+</body>
+</html>
